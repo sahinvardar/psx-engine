@@ -1,0 +1,39 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "PSX: Build",
+			"type": "shell",
+			"command": "make",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": ["$gcc"]
+		},
+		{
+			"label": "PSX: Clean",
+			"type": "shell",
+			"command": "make clean",
+			"problemMatcher": []
+		},
+		{
+			"label": "PSX: Run",
+			"type": "shell",
+			"command": "make run",
+			"problemMatcher": ["$gcc"]
+		},
+		{
+			"label": "PSX: Watch and Reload",
+			"type": "shell",
+			"command": "make watch",
+			"problemMatcher": ["$gcc"]
+		},
+		{
+			"label": "PSX: Refresh IntelliSense",
+			"type": "shell",
+			"command": "make intellisense",
+			"problemMatcher": []
+		}
+	]
+}

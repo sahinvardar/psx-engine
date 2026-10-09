@@ -1,0 +1,415 @@
+# PSX Hello Cube
+
+A first original PlayStation 3D program written in C. It draws a rotating,
+colored cube using the Geometry Transformation Engine, ordering tables,
+back-face culling and double buffering as found in classic Psy-Q programs.
+
+The project uses the open-source
+[PSn00bSDK](https://github.com/Lameguy64/PSn00bSDK) toolchain. Its GPU API
+preserves many Psy-Q names and concepts without redistributing Sony's
+proprietary SDK. The compiler is GCC targeting the PSX's little-endian MIPS
+R3000A CPU.
+
+## Prerequisites
+
+- macOS on Apple Silicon or Intel
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- `make` (provided by Apple's Command Line Tools)
+
+The Docker image is intentionally `linux/amd64`, because PSn00bSDK 0.24 only
+publishes an x86-64 Linux toolchain. Docker Desktop runs it on both kinds of
+Mac.
+
+## Build
+
+Start Docker Desktop, then run:
+
+```sh
+make
+```
+
+The first build downloads and verifies PSn00bSDK 0.24 inside a local Docker
+image. Later builds reuse that image.
+
+Build outputs:
+
+- `build/hello_cube.exe` - standalone PS-X EXE
+- `build/hello_cube.bin` - bootable CD image data
+- `build/hello_cube.cue` - cue sheet to open in an emulator
+
+Use `make clean` to remove generated build files.
+
+## Run
+
+DuckStation is installed in the standard macOS location, so you can build and
+launch the executable directly:
+
+```sh
+make run
+```
+
+You can alternatively open `build/hello_cube.cue` in a PSX emulator.
+DuckStation is convenient for normal testing; PCSX-Redux is useful when you
+want a debugger.
+
+You can also load `build/hello_cube.exe` directly in an emulator that
+supports PS-X EXE files.
+
+This project does not include a PlayStation BIOS. Use a BIOS dumped from a
+console you own, or use an emulator's supported open BIOS option.
+
+## Automatic rebuild and reload
+
+Run:
+
+```sh
+make watch
+```
+
+The watcher performs an initial build and opens the PS-X EXE in DuckStation.
+Whenever a source or CMake file changes, it:
+
+1. Rebuilds `hello_cube.exe`.
+2. Stops the DuckStation process it started without showing an exit prompt.
+3. Launches the new executable.
+
+If compilation fails, the emulator keeps running the last successful build.
+Fix the error and save again to retry. Press Control-C in the terminal to stop
+the watcher and its emulator process.
+
+This is automatic **reload**, rather than true in-place hot reload. Replacing
+code while a PSX program is running would invalidate pointers, GPU command
+buffers and other state in the console's 2 MB of RAM. Restarting the executable
+is predictable and takes only a few seconds.
+
+The watcher force-stops only the exact DuckStation process that it launched.
+This intentionally skips resume-state creation during development and does not
+change DuckStation's global exit-confirmation setting.
+
+If DuckStation is installed elsewhere, pass its executable path:
+
+```sh
+make watch DUCKSTATION="/path/to/DuckStation"
+```
+
+## Code completion and definition navigation
+
+The project is configured for Microsoft's VS Code C/C++ extension. Generate
+the local IntelliSense files with:
+
+```sh
+make intellisense
+```
+
+This copies the exact PSn00bSDK 0.24 headers from the toolchain image and checks
+out the matching SDK source under `.vscode/psn00bsdk/`. That generated folder
+is ignored by Git and is not used to compile the game.
+
+After setup, completion, parameter hints, hover information and error
+highlighting are available in C files. Use F12 or Command-click to navigate
+from calls such as `RotMatrix()` and `ResetGraph()` to their declarations or
+implementations. For GTE macros such as `gte_rtpt()`, navigation opens
+`inline_c.h`, where the hardware instruction wrapper is defined.
+
+If VS Code was already open when setup completed, run **C/C++: Reset
+IntelliSense Database** from the Command Palette or reload the window.
+
+## Project layout
+
+```text
+.
+├── .vscode/tasks.json  VS Code build and clean commands
+├── scripts/watch.sh    Automatic rebuild and emulator reload
+├── src/camera.h        Quaternion camera and movement API
+├── src/camera.c        Camera view-matrix implementation
+├── src/cube_entity.h   Reusable cube entity API
+├── src/cube_entity.c   Cube model data and spin behavior
+├── src/entity.h        Shared transform and entity movement API
+├── src/entity.c        Fixed-point quaternion transform implementation
+├── src/entity_system.h Fixed-capacity entity registry
+├── src/entity_system.c Entity registration and update dispatch
+├── src/gamepad_entity.h Controller-driven entity behavior
+├── src/gamepad_entity.c Digital and analog pad polling
+├── src/game_time.h     Fixed-point frame timing API
+├── src/game_time.c     VBlank delta measurement and rate scaling
+├── src/model.h         Indexed models and model-based entities
+├── src/model.c         Model entity initialization
+├── src/renderer.h      Public rendering API
+├── src/renderer.c      GPU, GTE, lighting and frame submission
+├── src/spline.h        Fixed-point Catmull-Rom spline data
+├── src/spline.c        Spline sampling implementation
+├── src/spline_entity.h Renderable paths and follower entities
+├── src/spline_entity.c Spline visualization and movement behavior
+├── src/units.h         Integer world-unit conversion macros
+├── src/main.c          Scene setup and update loop
+├── CMakeLists.txt      Executable and CD image targets
+├── CMakePresets.json   PSn00bSDK cross-compiler configuration
+├── Dockerfile          Reproducible macOS build environment
+├── Makefile            Short build commands
+├── iso.xml             CD image contents
+└── system.cnf          PlayStation boot configuration
+```
+
+## Psy-Q concepts used
+
+- `DISPENV` and `DRAWENV` describe the displayed and rendered framebuffers.
+- Two framebuffers prevent visible tearing while the GPU draws.
+- Indexed triangle models share vertices, normals and materials.
+- Base entities give cameras and models a common transform and movement API.
+- Optional run/render methods provide per-entity behavior and dispatch.
+- A fixed-capacity registry updates and renders registered world entities.
+- A gamepad entity can move and rotate any target entity.
+- Model entities add shared render geometry to a base entity.
+- 100 integer world units represent one meter (one unit is one centimeter).
+- A normalized quaternion camera supports local movement without gimbal lock.
+- The GTE rotates, translates and perspective-projects model vertices.
+- GTE normal-color calculations apply ambient and directional face lighting.
+- Back-face culling avoids drawing triangles turned away from the camera.
+- A 256-entry ordering table draws farther faces before nearer faces.
+- `POLY_F3` is Psy-Q's three-point, flat-shaded polygon primitive.
+- `setPolyF3`, the `gte_*` macros and `addPrim` construct and queue triangles.
+- `DrawOTagEnv`, `DrawSync` and `VSync` submit and synchronize each frame.
+
+PSn00bSDK combines the classic Psy-Q `libgpu.h` declarations into
+`psxgpu.h`, but the primitive programming model remains deliberately familiar.
+
+## World units
+
+Game-space positions and dimensions use 100 integer units per meter. Use the
+macros from `src/units.h` instead of embedding scaled numbers:
+
+```c
+WORLD_METERS(5)
+WORLD_CENTIMETERS(180)
+WORLD_MILLIMETERS(250)
+```
+
+Conversions remain integer-only; no floating-point code is added to the PSX
+executable. Values smaller than one world unit (one centimeter with the current
+scale) are rounded toward zero. GTE normals, matrices, rotation angles, screen
+coordinates and colors retain their own hardware-specific scales.
+
+## Camera
+
+The camera embeds the same base `Entity` used by model entities. Controllers
+and gameplay systems can manipulate any entity through the shared API:
+
+```c
+entity_set_position(&camera.entity, WORLD_METERS(0), WORLD_METERS(1), 0);
+entity_move_world(&camera.entity, WORLD_METERS(1), 0, 0);
+entity_move_local(&camera.entity, 0, 0, WORLD_CENTIMETERS(25));
+```
+
+Local movement follows the camera orientation, so positive local Z moves
+forward. Incremental local rotation is accumulated as quaternion
+multiplication rather than Euler orientation:
+
+```c
+entity_rotate_local(&camera.entity, pitch_delta, yaw_delta, roll_delta);
+```
+
+Angle deltas use the GTE convention of 4096 units per full turn. The API
+accepts pitch, yaw and roll deltas for convenience, but it never stores or
+reconstructs Euler angles, avoiding their gimbal-lock singularity.
+
+## Entity system
+
+`EntitySystem` stores up to 64 entity pointers without heap allocation.
+Registration and deregistration return explicit results such as
+`ENTITY_SYSTEM_FULL` and `ENTITY_SYSTEM_NOT_REGISTERED`.
+
+Each entity may define optional run and render methods:
+
+```c
+static void spin(Entity *entity, TimeDelta delta_time) {
+	int32_t yaw = time_scale_rate(960, delta_time);
+	entity_rotate_local(entity, 0, (int16_t) yaw, 0);
+}
+
+entity_set_run_method(&cube.entity, spin);
+entity_set_render_method(&cube.entity, renderer_render_model_entity);
+```
+
+Register the entity after its concrete object has been initialized:
+
+```c
+EntitySystemResult result =
+	entity_system_register(&entities, &cube.entity);
+assert(result == ENTITY_SYSTEM_SUCCESS);
+```
+
+The frame first runs entity behavior, then renders registered entities:
+
+```c
+game_time_update(&time);
+entity_system_run(&entities, time.delta);
+renderer_draw_entities(&entities, &camera);
+renderer_present();
+```
+
+Passing `NULL` to either method setter disables that method. A controller can
+hold an `Entity *` and call the common movement functions without knowing
+whether it controls a camera, model, player, or another concrete entity type.
+Call `entity_system_deregister()` before destroying or reusing registered
+entity storage.
+
+## Cube entity
+
+`CubeEntity` owns the shared one-cubic-meter cube model definition and embeds a
+`ModelEntity`.
+Initialization automatically attaches the model renderer:
+
+```c
+CubeEntity cube;
+cube_entity_init(&cube);
+
+Entity *entity = cube_entity_as_entity(&cube);
+entity_set_position(entity, 0, 0, WORLD_METERS(5));
+entity_system_register(&entities, entity);
+```
+
+Optional spin behavior is configured in angle units per second:
+
+```c
+cube_entity_set_spin(&cube, 720, 960, 480);
+cube_entity_stop_spin(&cube);
+```
+
+This keeps mesh data and cube-specific behavior out of `main.c`. Additional
+concrete entity types can follow the same composition pattern: embed a
+`ModelEntity`, attach optional methods during initialization, and expose the
+base `Entity *` for shared systems.
+
+The demo creates a 3×3 grid in the X/Y plane. Cubes have a one-meter edge and
+a one-meter empty gap, so adjacent centers are two meters apart.
+
+## Gamepad entity
+
+`GamepadEntity` polls a controller through the PSX BIOS driver from its optional
+run method. It controls any target supplied as an `Entity *`; the demo attaches
+port 1 to `camera.entity`.
+
+Default digital controls:
+
+| Input | Action |
+|---|---|
+| D-pad | Move forward, backward and strafe |
+| Triangle / Cross | Move up / down |
+| Square / Circle | Yaw left / right |
+| L1 / R1 | Pitch up / down |
+| L2 / R2 | Roll left / right |
+
+Dual Analog and DualShock controllers also use the left stick for movement and
+the right stick for yaw and pitch, with a dead zone around the center.
+DuckStation must have **Automatically Enable Analog Mode** enabled for port 1;
+otherwise the PSX BIOS exposes the emulated DualShock as a digital pad and no
+stick bytes are returned. The mapped Analog button can toggle the mode at
+runtime.
+
+Retarget the same controller without changing its behavior:
+
+```c
+gamepad_entity_set_target(&gamepad, &cube0.entity);
+gamepad_entity_set_target(&gamepad, &camera.entity);
+```
+
+Movement and rotation speeds are configurable:
+
+```c
+gamepad_entity_set_speeds(
+	&gamepad,
+	WORLD_METERS(3),
+	1440
+);
+```
+
+The values above are three meters per second and 1440 PSX angle units per
+second, rather than per-frame amounts.
+
+Before permanently removing the gamepad entity, deregister it and call
+`gamepad_entity_stop()` to stop the BIOS pad driver.
+
+## Frame timing
+
+`GameTime` measures elapsed VBlank ticks through `VSync(-1)` and converts them
+to signed 16.16 fixed-point seconds. It automatically uses 60 ticks per second
+for NTSC and 50 for PAL.
+
+Every entity run method receives the same frame delta:
+
+```c
+typedef void (*EntityRunMethod)(Entity *entity, TimeDelta delta_time);
+```
+
+Use `time_scale_rate()` to convert a per-second rate into this frame's integer
+movement or rotation:
+
+```c
+int32_t distance = time_scale_rate(
+	WORLD_METERS(3),
+	delta_time
+);
+```
+
+At full speed this moves three meters per second on both NTSC and PAL. If a
+frame takes two VBlanks, the returned distance doubles for that frame. The
+first frame may receive a zero delta because no VBlank has elapsed yet.
+
+## Splines
+
+`Spline` is a fixed-point Catmull-Rom curve. It passes through every control
+point and supports open or closed paths:
+
+```c
+static const SVECTOR points[] = {
+	{ WORLD_METERS(-3), 0, WORLD_METERS(6), 0 },
+	{ WORLD_METERS( 0), 0, WORLD_METERS(4), 0 },
+	{ WORLD_METERS( 3), 0, WORLD_METERS(6), 0 }
+};
+
+SplineEntity path;
+spline_entity_init(&path, points, 3, 0);
+```
+
+The last argument selects an open (`0`) or closed (`1`) curve. A spline entity
+has a normal entity transform, so the entire path can be moved or rotated. Its
+render callback draws a subdivided `LINE_F2` approximation:
+
+```c
+spline_entity_set_color(&path, 64, 255, 255);
+spline_entity_set_subdivisions(&path, 12);
+entity_system_register(&entities, &path.entity);
+```
+
+A follower is a separate non-rendered entity that updates any target:
+
+```c
+SplineFollowerEntity follower;
+spline_follower_entity_init(
+	&follower,
+	&path,
+	cube_entity_as_entity(&cube),
+	TIME_SECONDS(12),
+	1
+);
+entity_system_register(&entities, &follower.entity);
+```
+
+The duration controls traversal time for the complete path; the final argument
+enables looping. Playback can be paused, resumed or restarted. To use the same
+path as a camera rail, pass `&camera.entity` as the target. Position follows
+the spline; camera orientation remains independently controllable.
+
+Parameter speed is uniform, but physical speed can vary between control points
+because Catmull-Rom segments can have different lengths. Constant-distance
+motion would require a precomputed arc-length table.
+
+## Build without Docker
+
+If you later build PSn00bSDK natively, add its `bin` directory to `PATH`, set
+`PSN00BSDK_LIBS` to its `lib/libpsn00b` directory, and run:
+
+```sh
+cmake --preset default .
+cmake --build --preset default
+```
