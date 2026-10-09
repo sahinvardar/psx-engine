@@ -11,7 +11,7 @@
 #define SCREEN_WIDTH  320
 #define SCREEN_HEIGHT 240
 #define OT_LENGTH     256
-#define PACKET_BUFFER_SIZE 8192
+#define PACKET_BUFFER_SIZE 16384
 
 typedef struct {
 	DISPENV display;

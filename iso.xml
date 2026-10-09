@@ -3,8 +3,8 @@
 	<track type="data">
 		<identifiers
 			system="PLAYSTATION"
-			volume="HELLO_CUBE"
-			volume_set="HELLO_CUBE"
+			volume="PSX_ENGINE"
+			volume_set="PSX_ENGINE"
 			publisher="HOMEBREW"
 			data_preparer="PSN00BSDK ${PSN00BSDK_VERSION}"
 			application="PLAYSTATION"
@@ -13,7 +13,7 @@
 
 		<directory_tree>
 			<file name="SYSTEM.CNF" type="data" source="${PROJECT_SOURCE_DIR}/system.cnf" />
-			<file name="HELLO.EXE" type="data" source="hello_cube.exe" />
+			<file name="PSXENGIN.EXE" type="data" source="psx-engine.exe" />
 			<dummy sectors="1024" />
 		</directory_tree>
 	</track>

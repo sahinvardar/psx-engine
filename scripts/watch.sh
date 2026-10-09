@@ -5,7 +5,7 @@ set -o pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 duckstation="${DUCKSTATION:-/Applications/DuckStation.app/Contents/MacOS/DuckStation}"
-executable="$project_dir/build/hello_cube.exe"
+executable="$project_dir/build/psx-engine.exe"
 emulator_pid=""
 
 if [[ ! -x "$duckstation" ]]; then
@@ -39,7 +39,7 @@ start_emulator() {
 }
 
 build_and_reload() {
-	echo "Building hello_cube.exe..."
+	echo "Building psx-engine.exe..."
 	if make --directory "$project_dir" --no-print-directory exe; then
 		start_emulator
 		echo "Watching for source changes. Press Ctrl-C to stop."

@@ -1,147 +1,155 @@
 #include <assert.h>
+#include <psxgte.h>
 
 #include "camera.h"
 #include "cube_entity.h"
 #include "entity_system.h"
 #include "game_time.h"
 #include "gamepad_entity.h"
+#include "physics.h"
+#include "plane_entity.h"
 #include "renderer.h"
-#include "spline_entity.h"
 #include "units.h"
 
-#define CUBE_GRID_SIZE 3
-#define CUBE_GRID_COUNT (CUBE_GRID_SIZE * CUBE_GRID_SIZE)
-#define CUBE_EDGE_LENGTH WORLD_METERS(1)
-#define CUBE_GAP WORLD_METERS(1)
-#define CUBE_CENTER_SPACING (CUBE_EDGE_LENGTH + CUBE_GAP)
-#define CUBE_GRID_DEPTH WORLD_METERS(7)
+#define OBSTACLE_COUNT 5
 
-static const SVECTOR spline_points[] = {
-	{
-		WORLD_METERS(-3),
-		WORLD_METERS(-3),
-		WORLD_METERS(6),
-		0
-	},
-	{
-		WORLD_METERS(3),
-		WORLD_METERS(-3),
-		WORLD_METERS(6),
-		0
-	},
-	{
-		WORLD_METERS(3),
-		WORLD_METERS(3),
-		WORLD_METERS(8),
-		0
-	},
-	{
-		WORLD_METERS(-3),
-		WORLD_METERS(3),
-		WORLD_METERS(8),
-		0
-	}
+static const VECTOR obstacle_positions[OBSTACLE_COUNT] = {
+	{ WORLD_METERS(-2), WORLD_CENTIMETERS(50), WORLD_METERS(5) },
+	{ WORLD_METERS( 2), WORLD_CENTIMETERS(50), WORLD_METERS(5) },
+	{ WORLD_METERS(-2), WORLD_CENTIMETERS(50), WORLD_METERS(9) },
+	{ WORLD_METERS( 2), WORLD_CENTIMETERS(50), WORLD_METERS(9) },
+	{ WORLD_METERS( 0), WORLD_CENTIMETERS(50), WORLD_METERS(11) }
 };
+
+static void register_entity(
+	EntitySystem *system,
+	Entity *entity
+) {
+	assert(
+		entity_system_register(system, entity)
+		== ENTITY_SYSTEM_SUCCESS
+	);
+}
+
+static void register_body(
+	PhysicsSystem *system,
+	PhysicsBody *body
+) {
+	assert(
+		physics_system_register(system, body)
+		== PHYSICS_SYSTEM_SUCCESS
+	);
+}
 
 int main(void) {
 	Camera camera;
-	CubeEntity cubes[CUBE_GRID_COUNT];
+	CubeEntity obstacles[OBSTACLE_COUNT];
+	CubeEntity player;
 	EntitySystem entities;
 	GamepadEntity gamepad;
 	GameTime time;
-	CubeEntity moving_cube;
-	SplineEntity spline_path;
-	SplineFollowerEntity spline_follower;
+	PhysicsBody ground_body;
+	PhysicsBody obstacle_bodies[OBSTACLE_COUNT];
+	PhysicsBody player_body;
+	PhysicsSystem physics;
+	PlaneEntity ground;
 
 	renderer_init();
 	game_time_init(&time);
 	entity_system_init(&entities);
+	physics_system_init(&physics);
 
 	camera_init(&camera);
 	entity_set_position(
 		&camera.entity,
 		WORLD_METERS(0),
-		WORLD_METERS(0),
-		WORLD_METERS(0)
+		WORLD_METERS(-3),
+		WORLD_METERS(-5)
 	);
+	entity_rotate_local(&camera.entity, -256, 0, 0);
+
+	plane_entity_init(&ground);
+	entity_set_position(
+		plane_entity_as_entity(&ground),
+		WORLD_METERS(0),
+		WORLD_METERS(1),
+		WORLD_METERS(7)
+	);
+	physics_body_init(
+		&ground_body,
+		plane_entity_as_entity(&ground),
+		PHYSICS_BODY_STATIC,
+		WORLD_METERS(6),
+		WORLD_CENTIMETERS(10),
+		WORLD_METERS(6)
+	);
+	register_entity(&entities, plane_entity_as_entity(&ground));
+	register_body(&physics, &ground_body);
+
+	for (int index = 0; index < OBSTACLE_COUNT; index++) {
+		Entity *obstacle;
+
+		cube_entity_init(&obstacles[index]);
+		obstacle = cube_entity_as_entity(&obstacles[index]);
+		entity_set_position(
+			obstacle,
+			obstacle_positions[index].vx,
+			obstacle_positions[index].vy,
+			obstacle_positions[index].vz
+		);
+		physics_body_init(
+			&obstacle_bodies[index],
+			obstacle,
+			PHYSICS_BODY_STATIC,
+			WORLD_CENTIMETERS(50),
+			WORLD_CENTIMETERS(50),
+			WORLD_CENTIMETERS(50)
+		);
+		register_entity(&entities, obstacle);
+		register_body(&physics, &obstacle_bodies[index]);
+	}
+
+	cube_entity_init(&player);
+	entity_set_position(
+		cube_entity_as_entity(&player),
+		WORLD_METERS(0),
+		WORLD_CENTIMETERS(50),
+		WORLD_METERS(3)
+	);
+	physics_body_init(
+		&player_body,
+		cube_entity_as_entity(&player),
+		PHYSICS_BODY_DYNAMIC,
+		WORLD_CENTIMETERS(50),
+		WORLD_CENTIMETERS(50),
+		WORLD_CENTIMETERS(50)
+	);
+	physics_body_set_horizontal_damping(
+		&player_body,
+		TIME_SECONDS(4)
+	);
+	register_entity(&entities, cube_entity_as_entity(&player));
+	register_body(&physics, &player_body);
 
 	gamepad_entity_init(
 		&gamepad,
 		GAMEPAD_PORT_1,
-		&camera.entity
+		cube_entity_as_entity(&player)
 	);
-
-	assert(
-		entity_system_register(&entities, &gamepad.entity)
-		== ENTITY_SYSTEM_SUCCESS
+	gamepad_entity_set_physics_target(&gamepad, &player_body);
+	gamepad_entity_set_movement_force(
+		&gamepad,
+		WORLD_METERS(12)
 	);
-
-	for (int row = 0; row < CUBE_GRID_SIZE; row++) {
-		for (int column = 0; column < CUBE_GRID_SIZE; column++) {
-			int index = row * CUBE_GRID_SIZE + column;
-			Entity *cube_entity;
-
-			cube_entity_init(&cubes[index]);
-			cube_entity = cube_entity_as_entity(&cubes[index]);
-			entity_set_position(
-				cube_entity,
-				(column - 1) * CUBE_CENTER_SPACING,
-				(row - 1) * CUBE_CENTER_SPACING,
-				CUBE_GRID_DEPTH
-			);
-			cube_entity_set_spin(
-				&cubes[index],
-				720 + row * 120,
-				960 + column * 120,
-				480
-			);
-			assert(
-				entity_system_register(&entities, cube_entity)
-				== ENTITY_SYSTEM_SUCCESS
-			);
-		}
-	}
-
-	spline_entity_init(
-		&spline_path,
-		spline_points,
-		sizeof(spline_points) / sizeof(spline_points[0]),
-		1
-	);
-	spline_entity_set_color(&spline_path, 64, 255, 255);
-	spline_entity_set_subdivisions(&spline_path, 12);
-
-	cube_entity_init(&moving_cube);
-	cube_entity_set_spin(&moving_cube, 480, 720, 240);
-	spline_follower_entity_init(
-		&spline_follower,
-		&spline_path,
-		cube_entity_as_entity(&moving_cube),
-		TIME_SECONDS(12),
-		1
-	);
-
-	assert(
-		entity_system_register(&entities, &spline_path.entity)
-		== ENTITY_SYSTEM_SUCCESS
-	);
-	assert(
-		entity_system_register(
-			&entities,
-			cube_entity_as_entity(&moving_cube)
-		) == ENTITY_SYSTEM_SUCCESS
-	);
-	assert(
-		entity_system_register(&entities, &spline_follower.entity)
-		== ENTITY_SYSTEM_SUCCESS
-	);
+	register_entity(&entities, &gamepad.entity);
 
 	for (;;) {
 		game_time_update(&time);
 		entity_system_run(&entities, time.delta);
+		physics_system_step(&physics, time.delta);
 		renderer_draw_entities(&entities, &camera);
-		renderer_draw_text(8, 204, "D-PAD MOVE  FACE LOOK");
-		renderer_draw_text(8, 216, "TRI/CROSS UP/DOWN");
+		renderer_draw_text(8, 204, "L-STICK FORCE  R-STICK TURN");
+		renderer_draw_text(8, 216, "MOVE THE PLAYER CUBE");
 		renderer_present();
 	}
 

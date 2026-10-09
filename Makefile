@@ -22,14 +22,14 @@ build: toolchain
 	$(DOCKER_RUN) sh -c 'cmake --preset default . && cmake --build --preset default'
 
 exe: toolchain
-	$(DOCKER_RUN) sh -c 'cmake --preset default . && cmake --build --preset default --target hello_cube'
+	$(DOCKER_RUN) sh -c 'cmake --preset default . && cmake --build --preset default --target psx-engine'
 
 intellisense:
 	./scripts/setup-intellisense.sh
 
 run: exe
 	@test -x "$(DUCKSTATION)" || (echo "DuckStation not found at $(DUCKSTATION)" >&2; exit 1)
-	"$(DUCKSTATION)" -batch -fastboot -nofullscreen -- "$(CURDIR)/build/hello_cube.exe"
+	"$(DUCKSTATION)" -batch -fastboot -nofullscreen -- "$(CURDIR)/build/psx-engine.exe"
 
 watch:
 	DUCKSTATION="$(DUCKSTATION)" ./scripts/watch.sh

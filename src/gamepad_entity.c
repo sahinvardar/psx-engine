@@ -53,10 +53,12 @@ static void gamepad_entity_run(Entity *entity, TimeDelta delta_time) {
 		return;
 	}
 
-	move_amount = time_scale_rate(
-		gamepad->move_speed_per_second,
-		delta_time
-	);
+	move_amount = gamepad->physics_target != NULL
+		? gamepad->movement_force
+		: time_scale_rate(
+			gamepad->move_speed_per_second,
+			delta_time
+		);
 	rotation_amount = time_scale_rate(
 		gamepad->rotation_speed_per_second,
 		delta_time
@@ -126,7 +128,21 @@ static void gamepad_entity_run(Entity *entity, TimeDelta delta_time) {
 	}
 
 	if (move_x != 0 || move_y != 0 || move_z != 0) {
-		entity_move_local(gamepad->target, move_x, move_y, move_z);
+		if (gamepad->physics_target != NULL) {
+			physics_body_add_local_force(
+				gamepad->physics_target,
+				move_x,
+				move_y,
+				move_z
+			);
+		} else {
+			entity_move_local(
+				gamepad->target,
+				move_x,
+				move_y,
+				move_z
+			);
+		}
 	}
 	if (pitch != 0 || yaw != 0 || roll != 0) {
 		assert(pitch >= INT16_MIN && pitch <= INT16_MAX);
@@ -153,8 +169,10 @@ void gamepad_entity_init(
 	entity_init(&gamepad->entity);
 	entity_set_run_method(&gamepad->entity, gamepad_entity_run);
 	gamepad->target = target;
+	gamepad->physics_target = NULL;
 	gamepad->port = port;
 	gamepad->move_speed_per_second = WORLD_METERS(3);
+	gamepad->movement_force = WORLD_METERS(12);
 	gamepad->rotation_speed_per_second = 1440;
 
 	for (int pad = 0; pad < 2; pad++) {
@@ -177,6 +195,18 @@ void gamepad_entity_set_target(GamepadEntity *gamepad, Entity *target) {
 	assert(gamepad != NULL);
 	assert(target != NULL);
 	gamepad->target = target;
+	gamepad->physics_target = NULL;
+}
+
+void gamepad_entity_set_physics_target(
+	GamepadEntity *gamepad,
+	PhysicsBody *target
+) {
+	assert(gamepad != NULL);
+	assert(target != NULL);
+	assert(target->type == PHYSICS_BODY_DYNAMIC);
+	gamepad->target = target->entity;
+	gamepad->physics_target = target;
 }
 
 void gamepad_entity_set_speeds(
@@ -189,6 +219,15 @@ void gamepad_entity_set_speeds(
 	assert(rotation_speed_per_second >= 0);
 	gamepad->move_speed_per_second = move_speed_per_second;
 	gamepad->rotation_speed_per_second = rotation_speed_per_second;
+}
+
+void gamepad_entity_set_movement_force(
+	GamepadEntity *gamepad,
+	int32_t movement_force
+) {
+	assert(gamepad != NULL);
+	assert(movement_force >= 0);
+	gamepad->movement_force = movement_force;
 }
 
 void gamepad_entity_stop(GamepadEntity *gamepad) {

@@ -1,4 +1,4 @@
-# PSX Hello Cube
+# PSX Engine
 
 A first original PlayStation 3D program written in C. It draws a rotating,
 colored cube using the Geometry Transformation Engine, ordering tables,
@@ -33,9 +33,9 @@ image. Later builds reuse that image.
 
 Build outputs:
 
-- `build/hello_cube.exe` - standalone PS-X EXE
-- `build/hello_cube.bin` - bootable CD image data
-- `build/hello_cube.cue` - cue sheet to open in an emulator
+- `build/psx-engine.exe` - standalone PS-X EXE
+- `build/psx-engine.bin` - bootable CD image data
+- `build/psx-engine.cue` - cue sheet to open in an emulator
 
 Use `make clean` to remove generated build files.
 
@@ -48,11 +48,11 @@ launch the executable directly:
 make run
 ```
 
-You can alternatively open `build/hello_cube.cue` in a PSX emulator.
+You can alternatively open `build/psx-engine.cue` in a PSX emulator.
 DuckStation is convenient for normal testing; PCSX-Redux is useful when you
 want a debugger.
 
-You can also load `build/hello_cube.exe` directly in an emulator that
+You can also load `build/psx-engine.exe` directly in an emulator that
 supports PS-X EXE files.
 
 This project does not include a PlayStation BIOS. Use a BIOS dumped from a
@@ -69,7 +69,7 @@ make watch
 The watcher performs an initial build and opens the PS-X EXE in DuckStation.
 Whenever a source or CMake file changes, it:
 
-1. Rebuilds `hello_cube.exe`.
+1. Rebuilds `psx-engine.exe`.
 2. Stops the DuckStation process it started without showing an exit prompt.
 3. Launches the new executable.
 
@@ -134,6 +134,10 @@ IntelliSense Database** from the Command Palette or reload the window.
 ├── src/game_time.c     VBlank delta measurement and rate scaling
 ├── src/model.h         Indexed models and model-based entities
 ├── src/model.c         Model entity initialization
+├── src/physics.h       AABB bodies, contacts and physics world
+├── src/physics.c       Gravity, integration and collision resolution
+├── src/plane_entity.h  Reusable ground-plane entity API
+├── src/plane_entity.c  Twelve-meter ground model
 ├── src/renderer.h      Public rendering API
 ├── src/renderer.c      GPU, GTE, lighting and frame submission
 ├── src/spline.h        Fixed-point Catmull-Rom spline data
@@ -280,14 +284,20 @@ concrete entity types can follow the same composition pattern: embed a
 `ModelEntity`, attach optional methods during initialization, and expose the
 base `Entity *` for shared systems.
 
-The demo creates a 3×3 grid in the X/Y plane. Cubes have a one-meter edge and
-a one-meter empty gap, so adjacent centers are two meters apart.
+The level scene uses cube entities for the player and static obstacles.
+
+## Plane entity
+
+`PlaneEntity` is a reusable 12×12-meter horizontal model. It is subdivided into
+one-meter squares with alternating bright materials, providing visible scale
+and perspective cues. The level positions it beneath the cubes and pairs it
+with a thin static AABB to form the ground.
 
 ## Gamepad entity
 
 `GamepadEntity` polls a controller through the PSX BIOS driver from its optional
-run method. It controls any target supplied as an `Entity *`; the demo attaches
-port 1 to `camera.entity`.
+run method. It can either move an `Entity *` directly or add local forces to a
+dynamic `PhysicsBody`. The level attaches port 1 to the player body.
 
 Default digital controls:
 
@@ -309,22 +319,23 @@ runtime.
 Retarget the same controller without changing its behavior:
 
 ```c
-gamepad_entity_set_target(&gamepad, &cube0.entity);
 gamepad_entity_set_target(&gamepad, &camera.entity);
+gamepad_entity_set_physics_target(&gamepad, &player_body);
 ```
 
-Movement and rotation speeds are configurable:
+Direct movement uses meters per second. Physics movement uses force:
 
 ```c
-gamepad_entity_set_speeds(
-	&gamepad,
-	WORLD_METERS(3),
-	1440
-);
+gamepad_entity_set_speeds(&gamepad, WORLD_METERS(3), 1440);
+gamepad_entity_set_movement_force(&gamepad, WORLD_METERS(12));
 ```
 
-The values above are three meters per second and 1440 PSX angle units per
-second, rather than per-frame amounts.
+In physics mode the controller never writes the target position. It accumulates
+a local force, then `physics_system_step()` updates velocity, applies damping,
+resolves collisions and finally changes the entity transform. The right stick
+still rotates that target entity directly.
+
+Rotation is measured in PSX angle units per second.
 
 Before permanently removing the gamepad entity, deregister it and call
 `gamepad_entity_stop()` to stop the BIOS pad driver.
@@ -403,6 +414,82 @@ the spline; camera orientation remains independently controllable.
 Parameter speed is uniform, but physical speed can vary between control points
 because Catmull-Rom segments can have different lengths. Constant-distance
 motion would require a precomputed arc-length table.
+
+## Physics and collision
+
+`PhysicsSystem` stores up to 32 AABB bodies without heap allocation. Bodies can
+be static or dynamic:
+
+```c
+PhysicsSystem physics;
+PhysicsBody floor_body;
+PhysicsBody player_body;
+
+physics_system_init(&physics);
+
+physics_body_init(
+	&floor_body,
+	floor_entity,
+	PHYSICS_BODY_STATIC,
+	WORLD_METERS(2),
+	WORLD_CENTIMETERS(50),
+	WORLD_METERS(2)
+);
+
+physics_body_init(
+	&player_body,
+	player_entity,
+	PHYSICS_BODY_DYNAMIC,
+	WORLD_CENTIMETERS(50),
+	WORLD_CENTIMETERS(50),
+	WORLD_CENTIMETERS(50)
+);
+
+physics_system_register(&physics, &floor_body);
+physics_system_register(&physics, &player_body);
+```
+
+Dynamic bodies accumulate forces until the next physics step:
+
+```c
+physics_body_set_mass(&player_body, 1);
+physics_body_add_force(&player_body, WORLD_METERS(2), 0, 0);
+physics_body_add_local_force(&player_body, 0, 0, WORLD_METERS(12));
+physics_body_set_horizontal_damping(&player_body, TIME_SECONDS(4));
+```
+
+The default gravity is 9.8 meters per second squared along positive Y, matching
+the project's screen-oriented coordinate convention. Velocity and gravity use
+per-second world units; fractional integration remainders preserve sub-unit
+movement over multiple frames.
+
+Step physics after entity behavior and before rendering:
+
+```c
+entity_system_run(&entities, time.delta);
+physics_system_step(&physics, time.delta);
+renderer_draw_entities(&entities, &camera);
+```
+
+Optional callbacks receive the other body, contact normal and penetration:
+
+```c
+physics_body_set_collision_callback(
+	&player_body,
+	on_player_collision,
+	player_data
+);
+```
+
+The level registers a thin ground collider and five obstacle cubes as static
+bodies. The player cube is dynamic, falls under gravity, receives movement
+forces from the gamepad, and collides with the ground and obstacles.
+
+This first implementation uses discrete, axis-aligned boxes and inelastic
+response. Collider orientation does not follow visual rotation, and very fast
+bodies can tunnel through thin colliders. More advanced rigid-body rotation,
+swept collision and spatial partitioning can be added later without changing
+the base entity API.
 
 ## Build without Docker
 
