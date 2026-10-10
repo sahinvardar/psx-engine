@@ -58,6 +58,63 @@ supports PS-X EXE files.
 This project does not include a PlayStation BIOS. Use a BIOS dumped from a
 console you own, or use an emulator's supported open BIOS option.
 
+### Boot logo and disc license data
+
+The original BIOS does not load its PlayStation logo as a normal model from the
+ISO filesystem. It reads region-specific logo/license data from special disc
+sectors. PSn00bSDK cannot distribute Sony's payload, so a slow BIOS boot of an
+unlicensed homebrew image may show a broken logo. This does not indicate missing
+game models or a damaged executable.
+
+For development, `make run` and `make watch` load `psx-engine.exe` directly and
+skip the disc boot sequence. DuckStation's fast boot can likewise skip it when
+opening the cue sheet.
+
+To build a custom cube-logo image, legally dump the matching regional license
+data from a PlayStation disc you own and save it as:
+
+```text
+license.dat
+```
+
+The file is ignored by Git. On the next build,
+`scripts/generate-cube-license.py` preserves its regional license sector,
+replaces the original logo TMD with a six-face colored cube, and writes the
+generated `build/license-cube.dat` into the image:
+
+```sh
+make
+```
+
+You may alternatively configure an absolute input path:
+
+```sh
+cmake --preset default -DPSX_LICENSE_FILE=/path/to/license.dat .
+cmake --build --preset default
+```
+
+To retain the original logo from the dumped disc:
+
+```sh
+cmake --preset default -DPSX_CUSTOM_BOOT_CUBE=OFF .
+cmake --build --preset default
+```
+
+Custom boot meshes are BIOS-dependent:
+
+- NTSC US/Asia BIOS versions accept changed logos.
+- PAL BIOS versions through v3.0E accept them.
+- PAL v4.0E and later reject changed logos unless region-patched.
+- NTSC Japanese BIOS versions reject changed logos.
+
+The boot model is a standard unlit PlayStation TMD stored in sectors 5–11. It
+is unrelated to the engine's runtime `Model` structure and is rendered by the
+console BIOS before `PSXENGIN.EXE` starts.
+
+License-sector data only supplies the expected boot payload. It does not bypass
+the physical wobble-groove authentication on an unmodified console; real
+hardware still requires an appropriate legitimate boot method.
+
 ## Automatic rebuild and reload
 
 Run:

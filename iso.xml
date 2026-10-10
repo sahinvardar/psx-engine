@@ -11,6 +11,8 @@
 			copyright="README.TXT;1"
 		/>
 
+		${PSX_LICENSE_ELEMENT}
+
 		<directory_tree>
 			<file name="SYSTEM.CNF" type="data" source="${PROJECT_SOURCE_DIR}/system.cnf" />
 			<file name="PSXENGIN.EXE" type="data" source="psx-engine.exe" />

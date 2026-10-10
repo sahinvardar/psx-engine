@@ -1,4 +1,5 @@
 /build/
+license.dat
 /.vscode/psn00bsdk/
 /.vscode/*.VC.db*
 .DS_Store

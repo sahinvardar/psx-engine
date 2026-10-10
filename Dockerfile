@@ -8,6 +8,7 @@ RUN apt-get update \
 		ca-certificates \
 		cmake \
 		curl \
+		python3 \
 		unzip \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -23,4 +24,3 @@ ENV PATH="/opt/psn00bsdk/bin:${PATH}"
 ENV PSN00BSDK_LIBS="/opt/psn00bsdk/lib/libpsn00b"
 
 WORKDIR /workspace
-
