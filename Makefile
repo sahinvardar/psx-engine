@@ -13,7 +13,20 @@ DOCKER_RUN := docker run --rm --platform $(PLATFORM) \
 all: build
 
 toolchain:
-	docker build --platform $(PLATFORM) --tag $(IMAGE) .
+	@expected="$$(shasum -a 256 Dockerfile | awk '{ print $$1 }')"; \
+	actual="$$(docker image inspect \
+		--format '{{ index .Config.Labels "dev.psx-engine.dockerfile-sha" }}' \
+		$(IMAGE) 2>/dev/null || true)"; \
+	if [ "$$actual" = "$$expected" ]; then \
+		echo "Using existing toolchain image $(IMAGE)"; \
+	else \
+		echo "Building toolchain image $(IMAGE)"; \
+		docker build \
+			--platform $(PLATFORM) \
+			--label "dev.psx-engine.dockerfile-sha=$$expected" \
+			--tag $(IMAGE) \
+			.; \
+	fi
 
 configure: toolchain
 	$(DOCKER_RUN) cmake --preset default .

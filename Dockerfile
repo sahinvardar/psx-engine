@@ -8,6 +8,7 @@ RUN apt-get update \
 		ca-certificates \
 		cmake \
 		curl \
+		gdb-multiarch \
 		python3 \
 		unzip \
 	&& rm -rf /var/lib/apt/lists/*

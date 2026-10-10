@@ -29,7 +29,10 @@ make
 ```
 
 The first build downloads and verifies PSn00bSDK 0.24 inside a local Docker
-image. Later builds reuse that image.
+image. Later builds inspect and reuse that image without invoking
+`docker build`. The image is rebuilt only if `Dockerfile` changes or the local
+image has been removed. Build and debug commands still use short-lived
+containers, which Docker deletes automatically through `--rm`.
 
 Build outputs:
 
@@ -49,8 +52,8 @@ make run
 ```
 
 You can alternatively open `build/psx-engine.cue` in a PSX emulator.
-DuckStation is convenient for normal testing; PCSX-Redux is useful when you
-want a debugger.
+DuckStation is convenient for normal testing and provides a GDB remote server
+for source-level debugging.
 
 You can also load `build/psx-engine.exe` directly in an emulator that
 supports PS-X EXE files.
@@ -171,11 +174,54 @@ implementations. For GTE macros such as `gte_rtpt()`, navigation opens
 If VS Code was already open when setup completed, run **C/C++: Reset
 IntelliSense Database** from the Command Palette or reload the window.
 
+## Debugging in VS Code
+
+DuckStation's GDB remote server can be used by VS Code's Microsoft C/C++
+extension. The debugger loads symbols from the unstripped
+`build/psx-engine.elf`; DuckStation still runs `build/psx-engine.exe`.
+
+In DuckStation:
+
+1. Open **Settings > Advanced > Debugging**.
+2. Enable **GDB Server**.
+3. Set **GDB Server Port** to `2345`.
+4. Close DuckStation before starting a debug session.
+
+Then open **Run and Debug** in VS Code, select
+**PSX: Debug in DuckStation**, and press F5. The launch configuration:
+
+1. Builds the project and its Docker toolchain.
+2. Starts the exact DuckStation process used for the session.
+3. Holds emulation paused while VS Code connects.
+4. Runs Debian's `gdb-multiarch` in the toolchain container.
+5. Enables source-level breakpoints, stepping, registers, memory, and local
+   variables.
+
+Fast boot can execute `main()` before the debugger finishes attaching. For a
+first breakpoint, use a function called every frame, such as
+`renderer_present()`. Breakpoints set before pressing F5 are installed before
+VS Code resumes the paused emulator.
+
+Stopping the VS Code debug session also stops the DuckStation process launched
+for it. DuckStation's remote protocol does not implement GDB's detach packet,
+so this configuration intentionally does not leave that emulation session
+running. The server implements the core operations needed for CPU debugging,
+but it is not a full hardware debugger: use DuckStation's own debug windows for
+PSX-specific GPU, DMA, interrupt, and memory inspection.
+
+If DuckStation is installed outside `/Applications`, launch VS Code from a
+terminal with `DUCKSTATION` set to the emulator executable path. The debug
+launcher also accepts `PSX_GDB_PORT`, but changing it requires updating the
+matching port values in `.vscode/launch.json`.
+
 ## Project layout
 
 ```text
 .
+├── .vscode/launch.json VS Code GDB launch configuration
 ├── .vscode/tasks.json  VS Code build and clean commands
+├── scripts/docker-gdb.sh Containerized GDB transport
+├── scripts/debug-emulator.sh Managed DuckStation debug launcher
 ├── scripts/watch.sh    Automatic rebuild and emulator reload
 ├── src/camera.h        Quaternion camera and movement API
 ├── src/camera.c        Camera view-matrix implementation

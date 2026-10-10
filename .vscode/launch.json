@@ -1,0 +1,49 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "PSX: Debug in DuckStation",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "/workspace/build/psx-engine.elf",
+			"cwd": "/workspace",
+			"stopAtEntry": false,
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"targetArchitecture": "mips",
+			"launchCompleteCommand": "exec-continue",
+			"preLaunchTask": "PSX: Build",
+			"pipeTransport": {
+				"pipeProgram": "${workspaceFolder}/scripts/docker-gdb.sh",
+				"pipeArgs": [],
+				"debuggerPath": "/usr/bin/gdb-multiarch",
+				"pipeCwd": "${workspaceFolder}"
+			},
+			"sourceFileMap": {
+				"/workspace": "${workspaceFolder}"
+			},
+			"customLaunchSetupCommands": [
+				{
+					"description": "Use the PlayStation CPU architecture",
+					"text": "-gdb-set architecture mips:3000",
+					"ignoreFailures": false
+				},
+				{
+					"description": "Use the PlayStation byte order",
+					"text": "-gdb-set endian little",
+					"ignoreFailures": false
+				},
+				{
+					"description": "Load PSX engine symbols",
+					"text": "-file-exec-and-symbols /workspace/build/psx-engine.elf",
+					"ignoreFailures": false
+				},
+				{
+					"description": "Connect to DuckStation",
+					"text": "-target-select remote host.docker.internal:2345",
+					"ignoreFailures": false
+				}
+			]
+		}
+	]
+}
